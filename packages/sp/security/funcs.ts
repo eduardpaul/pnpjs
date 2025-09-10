@@ -90,4 +90,72 @@ export function hasPermissions(value: IBasePermissions, perm: PermissionKind): b
     }
     return false;
 }
+
+const FULL_MASK = 0xffffffff >>> 0;
+
+const bitIndex = (perm: PermissionKind): number | null => {
+    if (perm === PermissionKind.EmptyMask || perm === PermissionKind.FullMask) return null;
+    const idx = Number(perm) - 1; // PermissionKind is 1-based
+    return idx >= 0 && idx < 64 ? idx : null;
+};
+
+// Aux method to apply a bitmask operation to Low or High segment of IBasePermissions
+const applyMask = (
+    value: IBasePermissions,
+    idx: number,
+    op: (seg: number, mask: number) => number
+): IBasePermissions => {
+    if (idx < 32) {
+        const mask = (1 << idx) >>> 0;
+        return { ...value, Low: op(value.Low >>> 0, mask) >>> 0 };
+    } else {
+        const mask = (1 << (idx - 32)) >>> 0;
+        return { ...value, High: op(value.High >>> 0, mask) >>> 0 };
+    }
+};
+
+/**
+ * Adds a specified permission to the given base permissions object.
+ *
+ * @param value - The current base permissions object.
+ * @param perm - The permission kind to add.
+ * @returns The updated base permissions object with the specified permission added.
+ *
+ * - If `perm` is `PermissionKind.EmptyMask`, the original permissions are returned (no change).
+ * - If `perm` is `PermissionKind.FullMask`, all permission bits are granted.
+ * - Otherwise, the specific permission bit corresponding to `perm` is set.
+ */
+export function addPermission(value: IBasePermissions, perm: PermissionKind): IBasePermissions {
+    if (perm === PermissionKind.EmptyMask) return value; // no-op
+    if (perm === PermissionKind.FullMask) {
+        // grant all *defined* bits
+        return { ...value, Low: FULL_MASK, High: FULL_MASK };
+    }
+    const idx = bitIndex(perm);
+    if (idx === null) return value;
+    return applyMask(value, idx, (seg, mask) => (seg | mask) >>> 0);
+}
+
+/**
+ * Removes a specific permission from the given permissions value.
+ *
+ * @param value - The current permissions represented as an `IBasePermissions` object.
+ * @param perm - The permission to remove, specified as a `PermissionKind` enum value.
+ * @returns The updated `IBasePermissions` object with the specified permission removed.
+ *
+ * - If `perm` is `PermissionKind.EmptyMask`, the original permissions are returned unchanged.
+ * - If `perm` is `PermissionKind.FullMask`, all permissions are cleared.
+ * - If the bit index for the permission is not found, the original permissions are returned unchanged.
+ * - Otherwise, the specified permission bit is cleared.
+ */
+export function removePermission(value: IBasePermissions, perm: PermissionKind): IBasePermissions {
+    if (perm === PermissionKind.EmptyMask) return value; // no-op
+    if (perm === PermissionKind.FullMask) {
+        // clear all bits
+        return { ...value, Low: 0, High: 0 };
+    }
+    const idx = bitIndex(perm);
+    if (idx === null) return value;
+    return applyMask(value, idx, (seg, mask) => (seg & ~mask) >>> 0);
+}
 /* eslint-enable no-bitwise */
